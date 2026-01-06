@@ -3,37 +3,57 @@ mod config;
 mod error;
 mod user;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use config::Config;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{error, info, warn};
 use tracing_subscriber::filter::LevelFilter;
 use user::User;
+
+/// Config template embedded at compile time
+const CONFIG_TEMPLATE: &str = include_str!("../config.example.toml");
 
 #[derive(Parser)]
 #[command(name = "cf-zt-cleaner")]
 #[command(about = "Reset CloudFlare Zero Trust users to a given permanent users list")]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Path to configuration file
-    #[arg(short, long, default_value = "config.toml")]
+    #[arg(short, long, default_value = "config.toml", global = true)]
     config: PathBuf,
 
     /// Dry run mode - show what would be deleted without actually deleting
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     dry_run: bool,
 
     /// Auto-confirm deletion without prompting (for CI/CD)
-    #[arg(long)]
+    #[arg(long, global = true)]
     auto_confirm: bool,
 
     /// Increase verbosity (can be repeated: -v for debug, -vv for trace)
-    #[arg(short, long, action = clap::ArgAction::Count, conflicts_with = "quiet")]
+    #[arg(short, long, action = clap::ArgAction::Count, conflicts_with = "quiet", global = true)]
     verbose: u8,
 
     /// Decrease verbosity (can be repeated: -q for warn, -qq for error)
-    #[arg(short, long, action = clap::ArgAction::Count, conflicts_with = "verbose")]
+    #[arg(short, long, action = clap::ArgAction::Count, conflicts_with = "verbose", global = true)]
     quiet: u8,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Initialize a new config.toml file with example configuration
+    InitConfig {
+        /// Output path for the config file (defaults to --config value)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Overwrite existing file if present
+        #[arg(short, long)]
+        force: bool,
+    },
 }
 
 fn confirm_deletion(count: usize) -> anyhow::Result<bool> {
@@ -51,8 +71,29 @@ fn confirm_deletion(count: usize) -> anyhow::Result<bool> {
     Ok(response == "y" || response == "yes")
 }
 
+fn init_config(output: &Path, force: bool) -> anyhow::Result<()> {
+    if output.exists() && !force {
+        anyhow::bail!(
+            "Config file already exists at '{}'. Use --force to overwrite.",
+            output.display()
+        );
+    }
+
+    std::fs::write(output, CONFIG_TEMPLATE)?;
+    println!("Created config file at '{}'", output.display());
+    println!("Edit it with your CloudFlare credentials and permanent users list.");
+
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    // Handle init-config before setting up logging
+    if let Some(Commands::InitConfig { output, force }) = cli.command {
+        let output_path = output.unwrap_or(cli.config);
+        return init_config(&output_path, force);
+    }
 
     let level = match (cli.verbose, cli.quiet) {
         (2.., _) => LevelFilter::TRACE,

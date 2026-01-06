@@ -8,6 +8,7 @@ use config::Config;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use tracing::{error, info, warn};
+use tracing_subscriber::filter::LevelFilter;
 use user::User;
 
 #[derive(Parser)]
@@ -25,6 +26,14 @@ struct Cli {
     /// Auto-confirm deletion without prompting (for CI/CD)
     #[arg(long)]
     auto_confirm: bool,
+
+    /// Increase verbosity (can be repeated: -v for debug, -vv for trace)
+    #[arg(short, long, action = clap::ArgAction::Count, conflicts_with = "quiet")]
+    verbose: u8,
+
+    /// Decrease verbosity (can be repeated: -q for warn, -qq for error)
+    #[arg(short, long, action = clap::ArgAction::Count, conflicts_with = "verbose")]
+    quiet: u8,
 }
 
 fn confirm_deletion(count: usize) -> anyhow::Result<bool> {
@@ -43,14 +52,17 @@ fn confirm_deletion(count: usize) -> anyhow::Result<bool> {
 }
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(tracing::Level::INFO.into()),
-        )
-        .init();
-
     let cli = Cli::parse();
+
+    let level = match (cli.verbose, cli.quiet) {
+        (2.., _) => LevelFilter::TRACE,
+        (1, _) => LevelFilter::DEBUG,
+        (0, 0) => LevelFilter::INFO,
+        (_, 1) => LevelFilter::WARN,
+        (_, 2..) => LevelFilter::ERROR,
+    };
+
+    tracing_subscriber::fmt().with_max_level(level).init();
 
     info!("Loading configuration from: {}", cli.config.display());
     let config = Config::load(&cli.config)?;

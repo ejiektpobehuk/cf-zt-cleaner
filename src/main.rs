@@ -109,12 +109,11 @@ fn main() -> anyhow::Result<()> {
     }
 
     // Prompt for confirmation unless --auto-confirm flag is provided
-    if !cli.auto_confirm {
-        if !confirm_deletion(users_to_delete.len())? {
+    if !cli.auto_confirm
+        && !confirm_deletion(users_to_delete.len())? {
             info!("Deletion cancelled by user");
             return Ok(());
         }
-    }
 
     // Delete users not in permanent list
     let mut deleted_count = 0;
@@ -141,6 +140,14 @@ fn main() -> anyhow::Result<()> {
         "Cleanup complete. Deleted: {}, Errors: {}",
         deleted_count, error_count
     );
+
+    if error_count > 0 {
+        anyhow::bail!(
+            "Partial failure: {} user{} could not be deleted",
+            error_count,
+            if error_count == 1 { "" } else { "s" }
+        );
+    }
 
     Ok(())
 }

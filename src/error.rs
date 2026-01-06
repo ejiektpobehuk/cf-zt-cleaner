@@ -16,6 +16,20 @@ pub enum Error {
 
     #[error("CloudFlare API returned unsuccessful response")]
     CloudFlareUnsuccessful,
+
+    #[error("Rate limited by CloudFlare API")]
+    RateLimited,
+}
+
+impl Error {
+    /// Returns true if this error is retryable (transient)
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::RateLimited => true,
+            Self::Request(e) => e.is_timeout() || e.is_connect(),
+            _ => false,
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

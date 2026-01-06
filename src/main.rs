@@ -109,11 +109,10 @@ fn main() -> anyhow::Result<()> {
     }
 
     // Prompt for confirmation unless --auto-confirm flag is provided
-    if !cli.auto_confirm
-        && !confirm_deletion(users_to_delete.len())? {
-            info!("Deletion cancelled by user");
-            return Ok(());
-        }
+    if !cli.auto_confirm && !confirm_deletion(users_to_delete.len())? {
+        info!("Deletion cancelled by user");
+        return Ok(());
+    }
 
     // Delete users not in permanent list
     let mut deleted_count = 0;

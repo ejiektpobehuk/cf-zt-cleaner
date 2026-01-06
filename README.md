@@ -46,6 +46,24 @@ permanent = [
 ]
 ```
 
+### Environment Variables
+
+CloudFlare credentials can also be provided via environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `CF_ACCOUNT_ID` | CloudFlare account ID |
+| `CF_API_TOKEN` | CloudFlare API token |
+
+**Priority**: Environment variables take precedence over config file values. If both are set, a warning is displayed and the environment variable value is used.
+
+```bash
+# Example: using environment variables
+export CF_ACCOUNT_ID="your-account-id"
+export CF_API_TOKEN="your-api-token"
+cf-zt-cleaner --dry-run
+```
+
 ### Getting CloudFlare credentials
 
 1. **Account ID**: Found in your CloudFlare dashboard URL or in Account Settings

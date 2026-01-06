@@ -19,6 +19,9 @@ pub enum Error {
 
     #[error("Rate limited by CloudFlare API")]
     RateLimited,
+
+    #[error("Missing CloudFlare credential: {0} (set in config file or via environment variable)")]
+    MissingCredential(String),
 }
 
 impl Error {

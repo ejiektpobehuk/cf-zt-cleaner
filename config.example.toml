@@ -2,12 +2,17 @@
 
 [cloudflare]
 # Your CloudFlare account ID (found in the dashboard URL or account settings)
+# Can also be set via CF_ACCOUNT_ID environment variable
 account_id = "your-account-id-here"
 
 # API token with Zero Trust permissions
 # Required permissions: Access: Users (Read, Edit)
 # Create at: https://dash.cloudflare.com/profile/api-tokens
+# Can also be set via CF_API_TOKEN environment variable
 api_token = "your-api-token-here"
+
+# Note: Environment variables take priority over config file values.
+# A warning is shown if both are set.
 
 # Permanent users list - these users will NOT be deleted
 [users]

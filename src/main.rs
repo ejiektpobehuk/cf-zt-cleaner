@@ -5,6 +5,7 @@ mod user;
 
 use clap::Parser;
 use config::Config;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use tracing::{error, info, warn};
 use user::User;
@@ -20,6 +21,25 @@ struct Cli {
     /// Dry run mode - show what would be deleted without actually deleting
     #[arg(short, long)]
     dry_run: bool,
+
+    /// Auto-confirm deletion without prompting (for CI/CD)
+    #[arg(long)]
+    auto_confirm: bool,
+}
+
+fn confirm_deletion(count: usize) -> anyhow::Result<bool> {
+    print!(
+        "Are you sure you want to delete {} user{}? [y/N]: ",
+        count,
+        if count == 1 { "" } else { "s" }
+    );
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    let response = input.trim().to_lowercase();
+    Ok(response == "y" || response == "yes")
 }
 
 fn main() -> anyhow::Result<()> {
@@ -86,6 +106,14 @@ fn main() -> anyhow::Result<()> {
     if cli.dry_run {
         warn!("Dry run mode - no users were deleted");
         return Ok(());
+    }
+
+    // Prompt for confirmation unless --auto-confirm flag is provided
+    if !cli.auto_confirm {
+        if !confirm_deletion(users_to_delete.len())? {
+            info!("Deletion cancelled by user");
+            return Ok(());
+        }
     }
 
     // Delete users not in permanent list

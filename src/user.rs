@@ -7,12 +7,6 @@ pub struct CloudFlareUser {
     pub email: Option<String>,
 }
 
-/// User defined in local configuration (permanent list)
-#[derive(Debug, Clone, Deserialize)]
-pub struct ConfigUser {
-    pub email: String,
-}
-
 /// Unified user representation for comparison
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct User {
@@ -42,16 +36,12 @@ impl TryFrom<CloudFlareUser> for User {
     }
 }
 
-impl From<ConfigUser> for User {
-    fn from(config_user: ConfigUser) -> Self {
-        Self {
-            id: None,
-            email: config_user.email,
-        }
-    }
-}
-
 impl User {
+    /// Create a User from an email string (for config permanent list)
+    pub const fn from_email(email: String) -> Self {
+        Self { id: None, email }
+    }
+
     /// Check if this user matches another by email (case-insensitive)
     pub fn matches(&self, other: &Self) -> bool {
         self.email.to_lowercase() == other.email.to_lowercase()

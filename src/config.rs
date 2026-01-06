@@ -1,5 +1,4 @@
 use crate::error::Result;
-use crate::user::ConfigUser;
 use serde::Deserialize;
 use std::env;
 use std::path::Path;
@@ -37,7 +36,7 @@ pub struct CloudFlareConfig {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct UsersConfig {
-    pub permanent: Vec<ConfigUser>,
+    pub permanent: Vec<String>,
 }
 
 impl Config {

@@ -17,7 +17,7 @@ api_token = "your-api-token-here"
 # Permanent users list - these users will NOT be deleted
 [users]
 permanent = [
-    { email = "admin@example.com" },
-    { email = "developer@example.com" },
-    { email = "support@example.com" },
+    "admin@example.com",
+    "developer@example.com",
+    "support@example.com",
 ]

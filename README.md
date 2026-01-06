@@ -49,19 +49,7 @@ Options:
 
 ## Configuration
 
-Create a `config.toml` file (see `config.example.toml` for reference):
-
-```toml
-[cloudflare]
-account_id = "your-account-id-here"
-api_token = "your-api-token-here"
-
-[users]
-permanent = [
-    { email = "admin@example.com" },
-    { email = "developer@example.com" },
-]
-```
+Create a `config.toml` file based on [`config.example.toml`](config.example.toml). You can either copy it manually from the repository or generate it locally with `cf-zt-cleaner init-config`.
 
 ### Environment Variables
 

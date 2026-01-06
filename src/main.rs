@@ -92,7 +92,12 @@ fn find_users_to_delete(
     info!("Loading configuration from: {}", config_path.display());
     let config = Config::load(config_path)?;
 
-    let permanent_users: Vec<User> = config.users.permanent.into_iter().map(User::from).collect();
+    let permanent_users: Vec<User> = config
+        .users
+        .permanent
+        .into_iter()
+        .map(User::from_email)
+        .collect();
 
     info!(
         "Loaded {} permanent users from configuration",

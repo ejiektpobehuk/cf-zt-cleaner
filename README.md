@@ -11,22 +11,39 @@ A Rust CLI tool to reset CloudFlare Zero Trust users to a given permanent list, 
 ## Usage
 
 ```bash
-# Copy and edit the configuration file
-cp config.example.toml config.toml
+# Initialize a config file from template
+cf-zt-cleaner init-config
 
-# Run in dry-run mode to see what would be deleted
-cf-zt-cleaner --dry-run
+# Edit the configuration
+$EDITOR config.toml
 
-# Run for real
-cf-zt-cleaner
+# Preview what would be deleted
+cf-zt-cleaner preview
+
+# Run the cleanup
+cf-zt-cleaner clean
+
+# Run without confirmation prompt (for CI/CD)
+cf-zt-cleaner clean --auto-confirm
 ```
 
-### CLI Options
+### Commands
+
+```
+Commands:
+  clean        Clean up users not in the permanent list
+  preview      Preview what would be deleted without actually deleting
+  init-config  Initialize a new config.toml file with example configuration
+  help         Print this message or the help of the given subcommand(s)
+```
+
+### Global Options
 
 ```
 Options:
   -c, --config <CONFIG>  Path to configuration file [default: config.toml]
-  -d, --dry-run          Dry run mode - show what would be deleted
+  -v, --verbose          Increase verbosity (-v for debug, -vv for trace)
+  -q, --quiet            Decrease verbosity (-q for warn, -qq for error)
   -h, --help             Print help
 ```
 
@@ -61,7 +78,7 @@ CloudFlare credentials can also be provided via environment variables:
 # Example: using environment variables
 export CF_ACCOUNT_ID="your-account-id"
 export CF_API_TOKEN="your-api-token"
-cf-zt-cleaner --dry-run
+cf-zt-cleaner preview
 ```
 
 ### Getting CloudFlare credentials
@@ -80,9 +97,10 @@ The binary will be at `target/release/cf-zt-cleaner`.
 
 ## Logging
 
-Set the `RUST_LOG` environment variable for more detailed output:
+Use `-v` for debug output or `-vv` for trace output:
 
 ```bash
-RUST_LOG=debug cf-zt-cleaner --dry-run
+cf-zt-cleaner -v preview
+cf-zt-cleaner -vv clean
 ```
 

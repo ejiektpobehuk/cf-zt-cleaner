@@ -19,19 +19,11 @@ const CONFIG_TEMPLATE: &str = include_str!("../config.example.toml");
 #[command(about = "Reset CloudFlare Zero Trust users to a given permanent users list")]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Commands>,
+    command: Commands,
 
     /// Path to configuration file
     #[arg(short, long, default_value = "config.toml", global = true)]
     config: PathBuf,
-
-    /// Dry run mode - show what would be deleted without actually deleting
-    #[arg(short, long, global = true)]
-    dry_run: bool,
-
-    /// Auto-confirm deletion without prompting (for CI/CD)
-    #[arg(long, global = true)]
-    auto_confirm: bool,
 
     /// Increase verbosity (can be repeated: -v for debug, -vv for trace)
     #[arg(short, long, action = clap::ArgAction::Count, conflicts_with = "quiet", global = true)]
@@ -44,6 +36,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Clean up users not in the permanent list
+    Clean {
+        /// Auto-confirm deletion without prompting (for CI/CD)
+        #[arg(long)]
+        auto_confirm: bool,
+    },
+    /// Preview what would be deleted without actually deleting
+    Preview,
     /// Initialize a new config.toml file with example configuration
     InitConfig {
         /// Output path for the config file (defaults to --config value)
@@ -86,27 +86,11 @@ fn init_config(output: &Path, force: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
-
-    // Handle init-config before setting up logging
-    if let Some(Commands::InitConfig { output, force }) = cli.command {
-        let output_path = output.unwrap_or(cli.config);
-        return init_config(&output_path, force);
-    }
-
-    let level = match (cli.verbose, cli.quiet) {
-        (2.., _) => LevelFilter::TRACE,
-        (1, _) => LevelFilter::DEBUG,
-        (0, 0) => LevelFilter::INFO,
-        (_, 1) => LevelFilter::WARN,
-        (_, 2..) => LevelFilter::ERROR,
-    };
-
-    tracing_subscriber::fmt().with_max_level(level).init();
-
-    info!("Loading configuration from: {}", cli.config.display());
-    let config = Config::load(&cli.config)?;
+fn find_users_to_delete(
+    config_path: &Path,
+) -> anyhow::Result<(Vec<User>, cloudflare::CloudFlareClient)> {
+    info!("Loading configuration from: {}", config_path.display());
+    let config = Config::load(config_path)?;
 
     let permanent_users: Vec<User> = config.users.permanent.into_iter().map(User::from).collect();
 
@@ -137,41 +121,30 @@ fn main() -> anyhow::Result<()> {
     info!("Found {} users in CloudFlare", current_users.len());
 
     // Find users to delete (those not in permanent list)
-    let users_to_delete: Vec<&User> = current_users
-        .iter()
+    let users_to_delete: Vec<User> = current_users
+        .into_iter()
         .filter(|u| !u.is_in_permanent_list(&permanent_users))
         .collect();
 
-    if users_to_delete.is_empty() {
-        info!("No users to delete. All current users are in the permanent list.");
-        return Ok(());
-    }
+    Ok((users_to_delete, client))
+}
 
-    info!("Found {} users to delete:", users_to_delete.len());
-    for user in &users_to_delete {
+fn print_users_to_delete(users: &[User]) {
+    info!("Found {} users to delete:", users.len());
+    for user in users {
         info!(
             "  - {} ({})",
             user.email,
             user.id.as_deref().unwrap_or("no-id")
         );
     }
+}
 
-    if cli.dry_run {
-        warn!("Dry run mode - no users were deleted");
-        return Ok(());
-    }
-
-    // Prompt for confirmation unless --auto-confirm flag is provided
-    if !cli.auto_confirm && !confirm_deletion(users_to_delete.len())? {
-        info!("Deletion cancelled by user");
-        return Ok(());
-    }
-
-    // Delete users not in permanent list
+fn delete_users(users: &[User], client: &cloudflare::CloudFlareClient) -> anyhow::Result<()> {
     let mut deleted_count = 0;
     let mut error_count = 0;
 
-    for user in users_to_delete {
+    for user in users {
         if let Some(id) = &user.id {
             match client.delete_user(id) {
                 Ok(()) => {
@@ -202,4 +175,48 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
+    // Handle init-config before setting up logging
+    if let Commands::InitConfig { output, force } = cli.command {
+        let output_path = output.unwrap_or(cli.config);
+        return init_config(&output_path, force);
+    }
+
+    let level = match (cli.verbose, cli.quiet) {
+        (2.., _) => LevelFilter::TRACE,
+        (1, _) => LevelFilter::DEBUG,
+        (0, 0) => LevelFilter::INFO,
+        (_, 1) => LevelFilter::WARN,
+        (_, 2..) => LevelFilter::ERROR,
+    };
+
+    tracing_subscriber::fmt().with_max_level(level).init();
+
+    let (users_to_delete, client) = find_users_to_delete(&cli.config)?;
+
+    if users_to_delete.is_empty() {
+        info!("No users to delete. All current users are in the permanent list.");
+        return Ok(());
+    }
+
+    print_users_to_delete(&users_to_delete);
+
+    match cli.command {
+        Commands::Preview => {
+            warn!("Preview mode - no users were deleted");
+            Ok(())
+        }
+        Commands::Clean { auto_confirm } => {
+            if !auto_confirm && !confirm_deletion(users_to_delete.len())? {
+                info!("Deletion cancelled by user");
+                return Ok(());
+            }
+            delete_users(&users_to_delete, &client)
+        }
+        Commands::InitConfig { .. } => unreachable!(),
+    }
 }

@@ -1,0 +1,104 @@
+use serde::Deserialize;
+
+/// User as returned by `CloudFlare` Gateway Users API
+#[derive(Debug, Clone, Deserialize)]
+pub struct CloudFlareUser {
+    pub id: String,
+    pub email: Option<String>,
+}
+
+/// User defined in local configuration (permanent list)
+#[derive(Debug, Clone, Deserialize)]
+pub struct ConfigUser {
+    pub email: String,
+}
+
+/// Unified user representation for comparison
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct User {
+    pub id: Option<String>,
+    pub email: String,
+}
+
+/// Error when converting a `CloudFlare` user with no email
+#[derive(Debug)]
+pub struct MissingEmailError {
+    pub user_id: String,
+}
+
+impl TryFrom<CloudFlareUser> for User {
+    type Error = MissingEmailError;
+
+    fn try_from(cf_user: CloudFlareUser) -> Result<Self, Self::Error> {
+        match cf_user.email {
+            Some(email) => Ok(Self {
+                id: Some(cf_user.id),
+                email,
+            }),
+            None => Err(MissingEmailError {
+                user_id: cf_user.id,
+            }),
+        }
+    }
+}
+
+impl From<ConfigUser> for User {
+    fn from(config_user: ConfigUser) -> Self {
+        Self {
+            id: None,
+            email: config_user.email,
+        }
+    }
+}
+
+impl User {
+    /// Check if this user matches another by email (case-insensitive)
+    pub fn matches(&self, other: &Self) -> bool {
+        self.email.to_lowercase() == other.email.to_lowercase()
+    }
+
+    /// Check if this user's email is in a list of permanent users
+    pub fn is_in_permanent_list(&self, permanent_users: &[Self]) -> bool {
+        permanent_users.iter().any(|u| self.matches(u))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_user_matching_case_insensitive() {
+        let user1 = User {
+            id: Some("123".into()),
+            email: "Test@Example.com".into(),
+        };
+        let user2 = User {
+            id: None,
+            email: "test@example.com".into(),
+        };
+
+        assert!(user1.matches(&user2));
+    }
+
+    #[test]
+    fn test_user_in_permanent_list() {
+        let cf_user = User {
+            id: Some("123".into()),
+            email: "keep@example.com".into(),
+        };
+
+        let permanent = vec![
+            User {
+                id: None,
+                email: "keep@example.com".into(),
+            },
+            User {
+                id: None,
+                email: "also-keep@example.com".into(),
+            },
+        ];
+
+        assert!(cf_user.is_in_permanent_list(&permanent));
+    }
+}

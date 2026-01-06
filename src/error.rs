@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -10,6 +11,11 @@ pub enum Error {
 
     #[error("Failed to read file: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error(
+        "Configuration file not found: {path}\n\nTo create a new config file, run:\n  cf-zt-cleaner init-config\n\nOr specify a different config path with:\n  cf-zt-cleaner -c /path/to/config.toml <command>"
+    )]
+    ConfigNotFound { path: PathBuf },
 
     #[error("CloudFlare API error: {message} (code: {code})")]
     CloudFlareApi { code: i32, message: String },

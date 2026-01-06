@@ -42,6 +42,12 @@ pub struct UsersConfig {
 
 impl Config {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
+        if !path.exists() {
+            return Err(crate::error::Error::ConfigNotFound {
+                path: path.to_path_buf(),
+            });
+        }
         let content = std::fs::read_to_string(path)?;
         let raw_config: RawConfig = toml::from_str(&content)?;
 

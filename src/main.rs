@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 use config::Config;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::filter::LevelFilter;
 use user::User;
 
@@ -112,8 +112,18 @@ fn find_users_to_delete(
     info!("Fetching current users from CloudFlare...");
     let cloudflare_users = client.get_users()?;
 
+    // Debug: show seat breakdown
+    let total = cloudflare_users.len();
+    let with_seat = cloudflare_users.iter().filter(|u| u.access_seat).count();
+    debug!(
+        "User breakdown: {} total, {} with active seats",
+        total, with_seat
+    );
+
+    // Filter to only users with active Zero Trust seats
     let current_users: Vec<User> = cloudflare_users
         .into_iter()
+        .filter(|cf_user| cf_user.has_active_seat())
         .filter_map(|cf_user| match User::try_from(cf_user) {
             Ok(user) => Some(user),
             Err(e) => {
@@ -123,7 +133,10 @@ fn find_users_to_delete(
         })
         .collect();
 
-    info!("Found {} users in CloudFlare", current_users.len());
+    info!(
+        "Found {} users with active seats in CloudFlare",
+        current_users.len()
+    );
 
     // Find users to delete (those not in permanent list)
     let users_to_delete: Vec<User> = current_users

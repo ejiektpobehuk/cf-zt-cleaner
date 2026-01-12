@@ -49,7 +49,8 @@ Options:
 
 ## Configuration
 
-Create a `config.toml` file based on [`config.example.toml`](config.example.toml). You can either copy it manually from the repository or generate it locally with `cf-zt-cleaner init-config`.
+Create a `config.toml` file based on [`config.example.toml`](config.example.toml).
+You can either copy it manually from the repository or generate it locally with `cf-zt-cleaner init-config`.
 
 ### Environment Variables
 

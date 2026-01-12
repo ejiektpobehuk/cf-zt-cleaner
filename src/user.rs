@@ -1,10 +1,20 @@
 use serde::Deserialize;
 
-/// User as returned by `CloudFlare` Gateway Users API
+/// User as returned by `CloudFlare` Access Users API
 #[derive(Debug, Clone, Deserialize)]
 pub struct CloudFlareUser {
     pub id: String,
     pub email: Option<String>,
+    /// Whether this user has an active Access seat
+    #[serde(default)]
+    pub access_seat: bool,
+}
+
+impl CloudFlareUser {
+    /// Returns true if this user has an active Zero Trust seat
+    pub fn has_active_seat(&self) -> bool {
+        self.access_seat
+    }
 }
 
 /// Unified user representation for comparison

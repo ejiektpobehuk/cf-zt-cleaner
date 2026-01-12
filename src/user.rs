@@ -5,6 +5,10 @@ use serde::Deserialize;
 pub struct CloudFlareUser {
     pub id: String,
     pub email: Option<String>,
+    /// Timestamp of the user's last successful login (ISO 8601), if present.
+    ///
+    /// Example: "2020-07-01T05:20:00Z"
+    pub last_successful_login: Option<String>,
     /// Seat UID used for seat management API
     pub seat_uid: Option<String>,
     /// Whether this user has an active Access seat
@@ -24,6 +28,8 @@ impl CloudFlareUser {
 pub struct User {
     pub id: Option<String>,
     pub email: String,
+    /// Timestamp of the user's last successful login (ISO 8601), if present.
+    pub last_successful_login: Option<String>,
     /// Seat UID for seat management API (needed to revoke seats)
     pub seat_uid: Option<String>,
 }
@@ -42,6 +48,7 @@ impl TryFrom<CloudFlareUser> for User {
             Some(email) => Ok(Self {
                 id: Some(cf_user.id),
                 email,
+                last_successful_login: cf_user.last_successful_login,
                 seat_uid: cf_user.seat_uid,
             }),
             None => Err(MissingEmailError {
@@ -57,6 +64,7 @@ impl User {
         Self {
             id: None,
             email,
+            last_successful_login: None,
             seat_uid: None,
         }
     }
@@ -81,11 +89,13 @@ mod tests {
         let user1 = User {
             id: Some("123".into()),
             email: "Test@Example.com".into(),
+            last_successful_login: Some("2020-01-01T00:00:00Z".into()),
             seat_uid: Some("seat-123".into()),
         };
         let user2 = User {
             id: None,
             email: "test@example.com".into(),
+            last_successful_login: None,
             seat_uid: None,
         };
 
@@ -97,6 +107,7 @@ mod tests {
         let cf_user = User {
             id: Some("123".into()),
             email: "keep@example.com".into(),
+            last_successful_login: None,
             seat_uid: Some("seat-123".into()),
         };
 
@@ -104,11 +115,13 @@ mod tests {
             User {
                 id: None,
                 email: "keep@example.com".into(),
+                last_successful_login: None,
                 seat_uid: None,
             },
             User {
                 id: None,
                 email: "also-keep@example.com".into(),
+                last_successful_login: None,
                 seat_uid: None,
             },
         ];

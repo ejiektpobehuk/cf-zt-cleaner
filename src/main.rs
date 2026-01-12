@@ -91,12 +91,17 @@ fn interactive_revoke_seats(
     let mut error_count = 0;
 
     for (i, user) in users.iter().enumerate() {
+        let last_login = user
+            .last_successful_login
+            .as_deref()
+            .unwrap_or("never/unknown");
         print!(
-            "[{}/{}] Revoke seat for {} ({})? [y/N/a/q]: ",
+            "[{}/{}] Revoke seat for {} ({}) last_successful_login={} ? [y/N/a/q]: ",
             i + 1,
             users.len(),
             user.email,
-            user.id.as_deref().unwrap_or("no-id")
+            user.id.as_deref().unwrap_or("no-id"),
+            last_login
         );
         io::stdout().flush()?;
 
@@ -223,10 +228,23 @@ fn find_users_to_revoke(
     );
 
     // Find users to revoke seats for (those not in permanent list)
-    let users_to_revoke: Vec<User> = current_users
+    let mut users_to_revoke: Vec<User> = current_users
         .into_iter()
         .filter(|u| !u.is_in_permanent_list(&permanent_users))
         .collect();
+
+    // Sort by "oldest last successful login" first so it's easy to spot who hasn't used the
+    // service for the longest time. Treat missing login timestamps as oldest/unknown.
+    users_to_revoke.sort_by(
+        |a, b| match (&a.last_successful_login, &b.last_successful_login) {
+            (None, None) => a.email.to_lowercase().cmp(&b.email.to_lowercase()),
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            (Some(la), Some(lb)) => la
+                .cmp(lb)
+                .then_with(|| a.email.to_lowercase().cmp(&b.email.to_lowercase())),
+        },
+    );
 
     Ok((users_to_revoke, client))
 }
@@ -234,10 +252,15 @@ fn find_users_to_revoke(
 fn print_users_to_revoke(users: &[User]) {
     info!("Found {} users to revoke seats for:", users.len());
     for user in users {
+        let last_login = user
+            .last_successful_login
+            .as_deref()
+            .unwrap_or("never/unknown");
         info!(
-            "  - {} ({})",
+            "  - {} ({}) last_successful_login={}",
             user.email,
-            user.id.as_deref().unwrap_or("no-id")
+            user.id.as_deref().unwrap_or("no-id"),
+            last_login
         );
     }
 }

@@ -12,7 +12,7 @@ pub struct CloudFlareUser {
 
 impl CloudFlareUser {
     /// Returns true if this user has an active Zero Trust seat
-    pub fn has_active_seat(&self) -> bool {
+    pub const fn has_active_seat(&self) -> bool {
         self.access_seat
     }
 }

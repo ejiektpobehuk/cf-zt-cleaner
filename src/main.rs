@@ -39,8 +39,12 @@ enum Commands {
     /// Clean up users not in the permanent list
     Clean {
         /// Auto-confirm deletion without prompting (for CI/CD)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "interactive")]
         auto_confirm: bool,
+
+        /// Interactively choose which users to delete one by one
+        #[arg(short, long)]
+        interactive: bool,
     },
     /// Preview what would be deleted without actually deleting
     Preview,
@@ -69,6 +73,83 @@ fn confirm_deletion(count: usize) -> anyhow::Result<bool> {
 
     let response = input.trim().to_lowercase();
     Ok(response == "y" || response == "yes")
+}
+
+/// Interactive deletion mode - prompt for each user and delete immediately on approval
+fn interactive_delete_users(
+    users: &[User],
+    client: &cloudflare::CloudFlareClient,
+) -> anyhow::Result<()> {
+    println!("\nInteractive mode: Review each user for deletion");
+    println!("  [y]es    - delete this user");
+    println!("  [n]o     - keep this user (default)");
+    println!("  [a]ll    - delete this and all remaining users");
+    println!("  [q]uit   - stop immediately\n");
+
+    let mut deleted_count = 0;
+    let mut skipped_count = 0;
+    let mut error_count = 0;
+
+    for (i, user) in users.iter().enumerate() {
+        print!(
+            "[{}/{}] Delete {} ({})? [y/N/a/q]: ",
+            i + 1,
+            users.len(),
+            user.email,
+            user.id.as_deref().unwrap_or("no-id")
+        );
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+
+        let response = input.trim().to_lowercase();
+        match response.as_str() {
+            "y" | "yes" => {
+                if delete_user_impl(user, client).is_ok() {
+                    deleted_count += 1;
+                } else {
+                    error_count += 1;
+                }
+            }
+            "a" | "all" => {
+                // Delete current and all remaining users
+                info!("  → Deleting all remaining {} users...", users.len() - i);
+                for remaining_user in &users[i..] {
+                    if delete_user_impl(remaining_user, client).is_ok() {
+                        deleted_count += 1;
+                    } else {
+                        error_count += 1;
+                    }
+                }
+                break;
+            }
+            "q" | "quit" => {
+                info!("  → Quitting");
+                break;
+            }
+            _ => {
+                // Default is to skip (keep the user)
+                info!("  → Keeping: {}", user.email);
+                skipped_count += 1;
+            }
+        }
+    }
+
+    info!(
+        "Interactive cleanup complete. Deleted: {}, Skipped: {}, Errors: {}",
+        deleted_count, skipped_count, error_count
+    );
+
+    if error_count > 0 {
+        anyhow::bail!(
+            "Partial failure: {} user{} could not be deleted",
+            error_count,
+            if error_count == 1 { "" } else { "s" }
+        );
+    }
+
+    Ok(())
 }
 
 fn init_config(output: &Path, force: bool) -> anyhow::Result<()> {
@@ -123,7 +204,7 @@ fn find_users_to_delete(
     // Filter to only users with active Zero Trust seats
     let current_users: Vec<User> = cloudflare_users
         .into_iter()
-        .filter(|cf_user| cf_user.has_active_seat())
+        .filter(user::CloudFlareUser::has_active_seat)
         .filter_map(|cf_user| match User::try_from(cf_user) {
             Ok(user) => Some(user),
             Err(e) => {
@@ -158,24 +239,37 @@ fn print_users_to_delete(users: &[User]) {
     }
 }
 
+fn delete_user_impl(
+    user: &User,
+    client: &cloudflare::CloudFlareClient,
+) -> std::result::Result<(), (String, String)> {
+    user.id.as_ref().map_or_else(
+        || {
+            warn!("Cannot delete user without ID: {}", user.email);
+            Err((user.email.clone(), "missing ID".to_string()))
+        },
+        |id| match client.delete_user(id) {
+            Ok(()) => {
+                info!("Deleted user: {} ({})", user.email, id);
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to delete user {} ({}): {}", user.email, id, e);
+                Err((user.email.clone(), e.to_string()))
+            }
+        },
+    )
+}
+
 fn delete_users(users: &[User], client: &cloudflare::CloudFlareClient) -> anyhow::Result<()> {
     let mut deleted_count = 0;
     let mut error_count = 0;
 
     for user in users {
-        if let Some(id) = &user.id {
-            match client.delete_user(id) {
-                Ok(()) => {
-                    info!("Deleted user: {} ({})", user.email, id);
-                    deleted_count += 1;
-                }
-                Err(e) => {
-                    error!("Failed to delete user {} ({}): {}", user.email, id, e);
-                    error_count += 1;
-                }
-            }
+        if delete_user_impl(user, client).is_ok() {
+            deleted_count += 1;
         } else {
-            warn!("Cannot delete user without ID: {}", user.email);
+            error_count += 1;
         }
     }
 
@@ -228,12 +322,19 @@ fn main() -> anyhow::Result<()> {
             warn!("Preview mode - no users were deleted");
             Ok(())
         }
-        Commands::Clean { auto_confirm } => {
-            if !auto_confirm && !confirm_deletion(users_to_delete.len())? {
-                info!("Deletion cancelled by user");
-                return Ok(());
+        Commands::Clean {
+            auto_confirm,
+            interactive,
+        } => {
+            if interactive {
+                interactive_delete_users(&users_to_delete, &client)
+            } else {
+                if !auto_confirm && !confirm_deletion(users_to_delete.len())? {
+                    info!("Deletion cancelled by user");
+                    return Ok(());
+                }
+                delete_users(&users_to_delete, &client)
             }
-            delete_users(&users_to_delete, &client)
         }
         Commands::InitConfig { .. } => unreachable!(),
     }

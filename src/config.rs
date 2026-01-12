@@ -18,11 +18,13 @@ pub struct Config {
 /// Raw config as read from TOML file (credentials are optional)
 #[derive(Debug, Deserialize)]
 struct RawConfig {
+    #[serde(default)]
     cloudflare: RawCloudFlareConfig,
+    #[serde(default)]
     users: UsersConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct RawCloudFlareConfig {
     account_id: Option<String>,
     api_token: Option<String>,
@@ -34,7 +36,7 @@ pub struct CloudFlareConfig {
     pub api_token: String,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct UsersConfig {
     pub permanent: Vec<String>,
 }
@@ -43,8 +45,17 @@ impl Config {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         if !path.exists() {
-            return Err(crate::error::Error::ConfigNotFound {
-                path: path.to_path_buf(),
+            warn!(
+                "Configuration file not found at '{}'. Continuing without config file (permanent user list will be empty).",
+                path.display()
+            );
+
+            // No config file: credentials must come from environment variables, and the permanent
+            // user list defaults to empty.
+            let cloudflare = Self::resolve_cloudflare_config(RawCloudFlareConfig::default())?;
+            return Ok(Self {
+                cloudflare,
+                users: UsersConfig::default(),
             });
         }
         let content = std::fs::read_to_string(path)?;

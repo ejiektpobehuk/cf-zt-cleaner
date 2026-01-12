@@ -5,7 +5,7 @@ A CLI tool to keep CloudFlare Zero Trust unused seats under control.
 ## How it works
 
 1. Fetches current users from CloudFlare Access API
-2. Compares against a local permanent users list defined in `config.toml`
+2. Compares against a permanent users list (from `config.toml` if present; otherwise the list is empty)
 3. Revokes Zero Trust seats for users not in the permanent list (users remain, seats are removed)
 
 ## Usage
@@ -51,6 +51,9 @@ Options:
 
 Create a `config.toml` file based on [`config.example.toml`](config.example.toml).
 You can either copy it manually from the repository or generate it locally with `cf-zt-cleaner init-config`.
+
+If the config file is not found, the tool will continue **with a warning**.
+In that case, the permanent users list is treated as empty.
 
 ### Environment Variables
 

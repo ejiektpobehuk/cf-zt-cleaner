@@ -192,6 +192,11 @@ fn find_users_to_revoke(
         "Loaded {} permanent users from configuration",
         permanent_users.len()
     );
+    if permanent_users.is_empty() {
+        warn!(
+            "Permanent users list is empty. All CloudFlare users with active seats are eligible for seat revocation."
+        );
+    }
 
     let client = cloudflare::CloudFlareClient::new(
         config.cloudflare.account_id,

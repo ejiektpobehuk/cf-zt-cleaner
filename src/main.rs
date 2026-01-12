@@ -36,17 +36,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Clean up users not in the permanent list
+    /// Revoke Zero Trust seats for users not in the permanent list
     Clean {
-        /// Auto-confirm deletion without prompting (for CI/CD)
+        /// Auto-confirm seat revocation without prompting (for CI/CD)
         #[arg(long, conflicts_with = "interactive")]
         auto_confirm: bool,
 
-        /// Interactively choose which users to delete one by one
+        /// Interactively choose which users to revoke seats for one by one
         #[arg(short, long)]
         interactive: bool,
     },
-    /// Preview what would be deleted without actually deleting
+    /// Preview what would be revoked without making any changes
     Preview,
     /// Initialize a new config.toml file with example configuration
     InitConfig {
@@ -60,9 +60,9 @@ enum Commands {
     },
 }
 
-fn confirm_deletion(count: usize) -> anyhow::Result<bool> {
+fn confirm_seat_revocation(count: usize) -> anyhow::Result<bool> {
     print!(
-        "Are you sure you want to delete {} user{}? [y/N]: ",
+        "Are you sure you want to revoke Zero Trust seats for {} user{}? [y/N]: ",
         count,
         if count == 1 { "" } else { "s" }
     );
@@ -75,24 +75,24 @@ fn confirm_deletion(count: usize) -> anyhow::Result<bool> {
     Ok(response == "y" || response == "yes")
 }
 
-/// Interactive deletion mode - prompt for each user and delete immediately on approval
-fn interactive_delete_users(
+/// Interactive mode - prompt for each user and revoke their seat immediately on approval
+fn interactive_revoke_seats(
     users: &[User],
     client: &cloudflare::CloudFlareClient,
 ) -> anyhow::Result<()> {
-    println!("\nInteractive mode: Review each user for deletion");
-    println!("  [y]es    - delete this user");
+    println!("\nInteractive mode: Review each user for seat revocation");
+    println!("  [y]es    - revoke this user's seat");
     println!("  [n]o     - keep this user (default)");
-    println!("  [a]ll    - delete this and all remaining users");
+    println!("  [a]ll    - revoke this and all remaining users' seats");
     println!("  [q]uit   - stop immediately\n");
 
-    let mut deleted_count = 0;
+    let mut revoked_count = 0;
     let mut skipped_count = 0;
     let mut error_count = 0;
 
     for (i, user) in users.iter().enumerate() {
         print!(
-            "[{}/{}] Delete {} ({})? [y/N/a/q]: ",
+            "[{}/{}] Revoke seat for {} ({})? [y/N/a/q]: ",
             i + 1,
             users.len(),
             user.email,
@@ -106,18 +106,21 @@ fn interactive_delete_users(
         let response = input.trim().to_lowercase();
         match response.as_str() {
             "y" | "yes" => {
-                if delete_user_impl(user, client).is_ok() {
-                    deleted_count += 1;
+                if revoke_seat_impl(user, client).is_ok() {
+                    revoked_count += 1;
                 } else {
                     error_count += 1;
                 }
             }
             "a" | "all" => {
-                // Delete current and all remaining users
-                info!("  → Deleting all remaining {} users...", users.len() - i);
+                // Revoke current and all remaining users' seats
+                info!(
+                    "  → Revoking seats for all remaining {} users...",
+                    users.len() - i
+                );
                 for remaining_user in &users[i..] {
-                    if delete_user_impl(remaining_user, client).is_ok() {
-                        deleted_count += 1;
+                    if revoke_seat_impl(remaining_user, client).is_ok() {
+                        revoked_count += 1;
                     } else {
                         error_count += 1;
                     }
@@ -137,13 +140,13 @@ fn interactive_delete_users(
     }
 
     info!(
-        "Interactive cleanup complete. Deleted: {}, Skipped: {}, Errors: {}",
-        deleted_count, skipped_count, error_count
+        "Interactive cleanup complete. Seats revoked: {}, Skipped: {}, Errors: {}",
+        revoked_count, skipped_count, error_count
     );
 
     if error_count > 0 {
         anyhow::bail!(
-            "Partial failure: {} user{} could not be deleted",
+            "Partial failure: {} user{} could not have seats revoked",
             error_count,
             if error_count == 1 { "" } else { "s" }
         );
@@ -167,7 +170,7 @@ fn init_config(output: &Path, force: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn find_users_to_delete(
+fn find_users_to_revoke(
     config_path: &Path,
 ) -> anyhow::Result<(Vec<User>, cloudflare::CloudFlareClient)> {
     info!("Loading configuration from: {}", config_path.display());
@@ -219,17 +222,17 @@ fn find_users_to_delete(
         current_users.len()
     );
 
-    // Find users to delete (those not in permanent list)
-    let users_to_delete: Vec<User> = current_users
+    // Find users to revoke seats for (those not in permanent list)
+    let users_to_revoke: Vec<User> = current_users
         .into_iter()
         .filter(|u| !u.is_in_permanent_list(&permanent_users))
         .collect();
 
-    Ok((users_to_delete, client))
+    Ok((users_to_revoke, client))
 }
 
-fn print_users_to_delete(users: &[User]) {
-    info!("Found {} users to delete:", users.len());
+fn print_users_to_revoke(users: &[User]) {
+    info!("Found {} users to revoke seats for:", users.len());
     for user in users {
         info!(
             "  - {} ({})",
@@ -239,48 +242,59 @@ fn print_users_to_delete(users: &[User]) {
     }
 }
 
-fn delete_user_impl(
+fn revoke_seat_impl(
     user: &User,
     client: &cloudflare::CloudFlareClient,
 ) -> std::result::Result<(), (String, String)> {
-    user.id.as_ref().map_or_else(
+    user.seat_uid.as_ref().map_or_else(
         || {
-            warn!("Cannot delete user without ID: {}", user.email);
-            Err((user.email.clone(), "missing ID".to_string()))
+            warn!(
+                "Cannot revoke seat for user without seat_uid: {}",
+                user.email
+            );
+            Err((user.email.clone(), "missing seat_uid".to_string()))
         },
-        |id| match client.delete_user(id) {
+        |seat_uid| match client.revoke_seat(seat_uid) {
             Ok(()) => {
-                info!("Deleted user: {} ({})", user.email, id);
+                info!(
+                    "Revoked seat for user: {} (id: {}, seat_uid: {})",
+                    user.email,
+                    user.id.as_deref().unwrap_or("none"),
+                    seat_uid
+                );
                 Ok(())
             }
             Err(e) => {
-                error!("Failed to delete user {} ({}): {}", user.email, id, e);
+                error!(
+                    "Failed to revoke seat for user {} (seat_uid: {}): {}",
+                    user.email, seat_uid, e
+                );
                 Err((user.email.clone(), e.to_string()))
             }
         },
     )
 }
 
-fn delete_users(users: &[User], client: &cloudflare::CloudFlareClient) -> anyhow::Result<()> {
-    let mut deleted_count = 0;
+fn revoke_seats(users: &[User], client: &cloudflare::CloudFlareClient) -> anyhow::Result<()> {
+    let mut revoked_count = 0;
     let mut error_count = 0;
 
     for user in users {
-        if delete_user_impl(user, client).is_ok() {
-            deleted_count += 1;
+        if revoke_seat_impl(user, client).is_ok() {
+            revoked_count += 1;
         } else {
             error_count += 1;
         }
     }
 
     info!(
-        "Cleanup complete. Deleted: {}, Errors: {}",
-        deleted_count, error_count
+        "Cleanup complete. Seats revoked: {}, Errors: {}",
+        revoked_count, error_count
     );
 
     if error_count > 0 {
         anyhow::bail!(
-            "Partial failure: {} user{} could not be deleted",
+            "Partial failure: {} user{} could not have seats revoked",
             error_count,
             if error_count == 1 { "" } else { "s" }
         );
@@ -308,18 +322,18 @@ fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::fmt().with_max_level(level).init();
 
-    let (users_to_delete, client) = find_users_to_delete(&cli.config)?;
+    let (users_to_revoke, client) = find_users_to_revoke(&cli.config)?;
 
-    if users_to_delete.is_empty() {
-        info!("No users to delete. All current users are in the permanent list.");
+    if users_to_revoke.is_empty() {
+        info!("No seats to revoke. All current seat-holders are in the permanent list.");
         return Ok(());
     }
 
-    print_users_to_delete(&users_to_delete);
+    print_users_to_revoke(&users_to_revoke);
 
     match cli.command {
         Commands::Preview => {
-            warn!("Preview mode - no users were deleted");
+            warn!("Preview mode - no seats were revoked");
             Ok(())
         }
         Commands::Clean {
@@ -327,13 +341,13 @@ fn main() -> anyhow::Result<()> {
             interactive,
         } => {
             if interactive {
-                interactive_delete_users(&users_to_delete, &client)
+                interactive_revoke_seats(&users_to_revoke, &client)
             } else {
-                if !auto_confirm && !confirm_deletion(users_to_delete.len())? {
-                    info!("Deletion cancelled by user");
+                if !auto_confirm && !confirm_seat_revocation(users_to_revoke.len())? {
+                    info!("Seat revocation cancelled by user");
                     return Ok(());
                 }
-                delete_users(&users_to_delete, &client)
+                revoke_seats(&users_to_revoke, &client)
             }
         }
         Commands::InitConfig { .. } => unreachable!(),

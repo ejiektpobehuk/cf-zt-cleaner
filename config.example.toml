@@ -6,7 +6,9 @@
 account_id = "your-account-id-here"
 
 # API token with Zero Trust permissions
-# Required permissions: Access: Users (Read, Edit)
+# Required permissions:
+# - Account.Access: Audit Logs (Read) — to list users
+# - Account.Zero Trust: Seats (Edit) — to revoke seats
 # Create at: https://dash.cloudflare.com/profile/api-tokens
 # Can also be set via CF_API_TOKEN environment variable
 api_token = "your-api-token-here"
@@ -14,7 +16,7 @@ api_token = "your-api-token-here"
 # Note: Environment variables take priority over config file values.
 # A warning is shown if both are set.
 
-# Permanent users list - these users will NOT be deleted
+# Permanent users list - these users will NOT have their seats revoked
 [users]
 permanent = [
     "admin@example.com",

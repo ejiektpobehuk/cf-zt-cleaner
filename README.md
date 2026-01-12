@@ -1,12 +1,12 @@
 # CloudFlare Zero Trust Cleaner
 
-A Rust CLI tool to reset CloudFlare Zero Trust users to a given permanent list, helping to keep the number of users under a limit.
+A CLI tool to keep CloudFlare Zero Trust unused seats under control.
 
 ## How it works
 
 1. Fetches current users from CloudFlare Access API
 2. Compares against a local permanent users list defined in `config.toml`
-3. Deletes users not in the permanent list
+3. Revokes Zero Trust seats for users not in the permanent list (users remain, seats are removed)
 
 ## Usage
 
@@ -17,7 +17,7 @@ cf-zt-cleaner init-config
 # Edit the configuration
 $EDITOR config.toml
 
-# Preview what would be deleted
+# Preview what would be revoked
 cf-zt-cleaner preview
 
 # Run the cleanup
@@ -31,8 +31,8 @@ cf-zt-cleaner clean --auto-confirm
 
 ```
 Commands:
-  clean        Clean up users not in the permanent list
-  preview      Preview what would be deleted without actually deleting
+  clean        Revoke Zero Trust seats for users not in the permanent list
+  preview      Preview what would be revoked without making any changes
   init-config  Initialize a new config.toml file with example configuration
   help         Print this message or the help of the given subcommand(s)
 ```
@@ -77,7 +77,7 @@ cf-zt-cleaner preview
 
 Required permissions:
   - `Account.Access: Audit Logs` (Read) — to list the users
-  - 🤷 — to delete users
+  - `Account.Zero Trust: Seats` (Edit) — to revoke seats
 
 ## Building
 

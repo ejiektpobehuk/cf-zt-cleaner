@@ -5,6 +5,8 @@ use serde::Deserialize;
 pub struct CloudFlareUser {
     pub id: String,
     pub email: Option<String>,
+    /// Seat UID used for seat management API
+    pub seat_uid: Option<String>,
     /// Whether this user has an active Access seat
     #[serde(default)]
     pub access_seat: bool,
@@ -22,6 +24,8 @@ impl CloudFlareUser {
 pub struct User {
     pub id: Option<String>,
     pub email: String,
+    /// Seat UID for seat management API (needed to revoke seats)
+    pub seat_uid: Option<String>,
 }
 
 /// Error when converting a `CloudFlare` user with no email
@@ -38,6 +42,7 @@ impl TryFrom<CloudFlareUser> for User {
             Some(email) => Ok(Self {
                 id: Some(cf_user.id),
                 email,
+                seat_uid: cf_user.seat_uid,
             }),
             None => Err(MissingEmailError {
                 user_id: cf_user.id,
@@ -49,7 +54,11 @@ impl TryFrom<CloudFlareUser> for User {
 impl User {
     /// Create a User from an email string (for config permanent list)
     pub const fn from_email(email: String) -> Self {
-        Self { id: None, email }
+        Self {
+            id: None,
+            email,
+            seat_uid: None,
+        }
     }
 
     /// Check if this user matches another by email (case-insensitive)
@@ -72,10 +81,12 @@ mod tests {
         let user1 = User {
             id: Some("123".into()),
             email: "Test@Example.com".into(),
+            seat_uid: Some("seat-123".into()),
         };
         let user2 = User {
             id: None,
             email: "test@example.com".into(),
+            seat_uid: None,
         };
 
         assert!(user1.matches(&user2));
@@ -86,16 +97,19 @@ mod tests {
         let cf_user = User {
             id: Some("123".into()),
             email: "keep@example.com".into(),
+            seat_uid: Some("seat-123".into()),
         };
 
         let permanent = vec![
             User {
                 id: None,
                 email: "keep@example.com".into(),
+                seat_uid: None,
             },
             User {
                 id: None,
                 email: "also-keep@example.com".into(),
+                seat_uid: None,
             },
         ];
 

@@ -3,8 +3,8 @@ use crate::user::CloudFlareUser;
 use backon::{BlockingRetryable, ExponentialBuilder};
 use reqwest::StatusCode;
 use reqwest::blocking::{Client, Response};
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
@@ -164,39 +164,69 @@ impl CloudFlareClient {
         Ok(all_users)
     }
 
-    /// Delete a user by their ID (internal implementation)
-    fn delete_user_inner(&self, user_id: &str) -> Result<()> {
+    /// Revoke a user's seat (internal implementation)
+    /// Uses the seat management API to remove a user from Zero Trust seats
+    fn revoke_seat_inner(&self, seat_uid: &str) -> Result<()> {
         let url = format!(
-            "{}/accounts/{}/access/users/{}",
-            CLOUDFLARE_API_BASE, self.account_id, user_id
+            "{}/accounts/{}/access/seats",
+            CLOUDFLARE_API_BASE, self.account_id
         );
 
-        debug!("Deleting user: {}", user_id);
+        debug!("Revoking seat for user: {}", seat_uid);
+
+        let request_body = vec![SeatUpdate {
+            access_seat: false,
+            gateway_seat: false,
+            seat_uid: seat_uid.to_string(),
+        }];
 
         let response = self
             .client
-            .delete(&url)
+            .patch(&url)
             .header("Authorization", format!("Bearer {}", self.api_token))
             .header("Content-Type", "application/json")
+            .json(&request_body)
             .send()?;
 
-        let _: ApiResponse<()> = Self::handle_response(response)?;
+        let _: ApiResponse<Vec<SeatUpdateResult>> = Self::handle_response(response)?;
         Ok(())
     }
 
-    /// Delete a user by their ID with retry logic
-    pub fn delete_user(&self, user_id: &str) -> Result<()> {
-        let id = user_id.to_string();
-        (|| self.delete_user_inner(&id))
+    /// Revoke a user's Zero Trust seat with retry logic
+    pub fn revoke_seat(&self, seat_uid: &str) -> Result<()> {
+        let id = seat_uid.to_string();
+        (|| self.revoke_seat_inner(&id))
             .retry(default_backoff())
             .sleep(std::thread::sleep)
             .when(super::error::Error::is_retryable)
             .notify(|err, dur| {
-                warn!("Retrying delete of {} after {:?}: {}", id, dur, err);
+                warn!(
+                    "Retrying seat revocation for {} after {:?}: {}",
+                    id, dur, err
+                );
             })
             .call()?;
 
-        info!("Successfully deleted user: {}", user_id);
+        info!("Successfully revoked seat for user: {}", seat_uid);
         Ok(())
     }
+}
+
+/// Request body for seat management API
+#[derive(Debug, Serialize)]
+struct SeatUpdate {
+    access_seat: bool,
+    gateway_seat: bool,
+    seat_uid: String,
+}
+
+/// Response from seat management API
+#[derive(Debug, Deserialize)]
+struct SeatUpdateResult {
+    #[allow(dead_code)]
+    access_seat: bool,
+    #[allow(dead_code)]
+    gateway_seat: bool,
+    #[allow(dead_code)]
+    seat_uid: String,
 }

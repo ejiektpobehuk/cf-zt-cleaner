@@ -74,7 +74,10 @@ cf-zt-cleaner preview
 
 1. **Account ID**: Found in your CloudFlare dashboard URL or in Account Settings
 2. **API Token**: Create at https://dash.cloudflare.com/profile/api-tokens
-   - Required permissions: `Access: Users` (Read, Edit)
+
+Required permissions:
+  - `Account.Access: Audit Logs` (Read) — to list the users
+  - 🤷 — to delete users
 
 ## Building
 

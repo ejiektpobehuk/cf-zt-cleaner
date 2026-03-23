@@ -32,6 +32,11 @@ struct Cli {
     /// Decrease verbosity (can be repeated: -q for warn, -qq for error)
     #[arg(short, long, action = clap::ArgAction::Count, conflicts_with = "verbose", global = true)]
     quiet: u8,
+
+    /// Only target users whose last login is older than this duration (e.g. 2d, 48h).
+    /// Users with no login record are always included.
+    #[arg(long, value_name = "DURATION", global = true)]
+    older_than: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -58,6 +63,25 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
     },
+}
+
+fn parse_duration(s: &str) -> anyhow::Result<chrono::Duration> {
+    if let Some(days) = s.strip_suffix('d') {
+        let n: i64 = days
+            .parse()
+            .map_err(|_| anyhow::anyhow!("Invalid number in duration '{}'", s))?;
+        Ok(chrono::Duration::days(n))
+    } else if let Some(hours) = s.strip_suffix('h') {
+        let n: i64 = hours
+            .parse()
+            .map_err(|_| anyhow::anyhow!("Invalid number in duration '{}'", s))?;
+        Ok(chrono::Duration::hours(n))
+    } else {
+        anyhow::bail!(
+            "Invalid duration '{}'. Use Nd (days) or Nh (hours), e.g. 2d or 48h",
+            s
+        )
+    }
 }
 
 fn confirm_seat_revocation(count: usize) -> anyhow::Result<bool> {
@@ -350,7 +374,20 @@ fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::fmt().with_max_level(level).init();
 
-    let (users_to_revoke, client) = find_users_to_revoke(&cli.config)?;
+    let (mut users_to_revoke, client) = find_users_to_revoke(&cli.config)?;
+
+    if let Some(ref s) = cli.older_than {
+        let threshold = parse_duration(s)?;
+        let before = users_to_revoke.len();
+        users_to_revoke.retain(|u| u.last_login_older_than(threshold));
+        info!(
+            "--older-than {}: {} of {} users match (last login older than {})",
+            s,
+            users_to_revoke.len(),
+            before,
+            s
+        );
+    }
 
     if users_to_revoke.is_empty() {
         info!("No seats to revoke. All current seat-holders are in the permanent list.");

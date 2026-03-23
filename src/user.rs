@@ -1,3 +1,4 @@
+use chrono::{DateTime, Duration, Utc};
 use serde::Deserialize;
 
 /// User as returned by `CloudFlare` Access Users API
@@ -78,11 +79,62 @@ impl User {
     pub fn is_in_permanent_list(&self, permanent_users: &[Self]) -> bool {
         permanent_users.iter().any(|u| self.matches(u))
     }
+
+    /// Returns true if this user's last login is older than `threshold` ago,
+    /// or if the login timestamp is missing/unparseable (treated as never logged in).
+    pub fn last_login_older_than(&self, threshold: Duration) -> bool {
+        match &self.last_successful_login {
+            None => true,
+            Some(ts) => match ts.parse::<DateTime<Utc>>() {
+                Ok(login_time) => login_time < Utc::now() - threshold,
+                Err(_) => true,
+            },
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_last_login_older_than_no_login() {
+        let user = User {
+            id: None,
+            email: "a@example.com".into(),
+            last_successful_login: None,
+            seat_uid: None,
+        };
+        // No login record is always considered "older than any threshold"
+        assert!(user.last_login_older_than(Duration::days(1)));
+        assert!(user.last_login_older_than(Duration::hours(1)));
+    }
+
+    #[test]
+    fn test_last_login_older_than_old_login() {
+        let user = User {
+            id: None,
+            email: "a@example.com".into(),
+            last_successful_login: Some("2020-01-01T00:00:00Z".into()),
+            seat_uid: None,
+        };
+        assert!(user.last_login_older_than(Duration::days(1)));
+    }
+
+    #[test]
+    fn test_last_login_older_than_recent_login() {
+        let recent = (Utc::now() - Duration::minutes(30))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        let user = User {
+            id: None,
+            email: "a@example.com".into(),
+            last_successful_login: Some(recent),
+            seat_uid: None,
+        };
+        assert!(!user.last_login_older_than(Duration::hours(1)));
+        assert!(user.last_login_older_than(Duration::minutes(10)));
+    }
 
     #[test]
     fn test_user_matching_case_insensitive() {

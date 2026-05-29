@@ -27,3 +27,6 @@ run:
 
 shell:
     nix develop
+
+docker:
+    nix build .#docker

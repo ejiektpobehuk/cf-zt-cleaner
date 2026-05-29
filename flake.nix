@@ -17,6 +17,13 @@
           inherit src;
         };
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+        cf-zt-cleaner = craneLib.buildPackage (commonArgs // {
+          inherit cargoArtifacts;
+          meta = {
+            description = "Reset CloudFlare Zero Trust users to a given permanent list";
+            mainProgram = "cf-zt-cleaner";
+          };
+        });
       in
       {
         checks = {
@@ -30,13 +37,22 @@
           });
         };
 
-        packages.default = craneLib.buildPackage (commonArgs // {
-          inherit cargoArtifacts;
-          meta = {
-            description = "Reset CloudFlare Zero Trust users to a given permanent list";
-            mainProgram = "cf-zt-cleaner";
+        packages = {
+          default = cf-zt-cleaner;
+
+          docker = pkgs.dockerTools.buildLayeredImage {
+            name = "cf-zt-cleaner";
+            tag = "latest";
+            # busybox provides /bin/sh + coreutils so the image is usable as a
+            # GitLab CI job image (which spawns a shell for `script:`).
+            contents = [ cf-zt-cleaner pkgs.busybox ];
+            config = {
+              Entrypoint = [ "${cf-zt-cleaner}/bin/cf-zt-cleaner" ];
+              Cmd = [ "clean" "--auto-confirm" ];
+              Env = [ "PATH=/bin:/usr/bin" ];
+            };
           };
-        });
+        };
 
         devShells.default = pkgs.mkShell {
           inputsFrom = [ self.packages.${system}.default ];
